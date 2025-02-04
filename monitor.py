@@ -121,7 +121,7 @@ def process_handle(handle):
 
             articles_locator = page.locator("article")
             try:
-                articles_locator.first.wait_for(timeout=10000)
+                articles_locator.first.wait_for(timeout=50000)
             except PlaywrightTimeoutError:
                 logging.error(f"Timeout waiting for articles on @{handle}'s page.")
                 context.close()
@@ -164,7 +164,7 @@ def process_handle(handle):
             page.goto(profile_url, timeout=60000)
             followers_locator = page.locator("a", has_text="Followers")
             try:
-                followers_locator.first.wait_for(timeout=10000)
+                followers_locator.first.wait_for(timeout=50000)
             except PlaywrightTimeoutError:
                 logging.error(f"Timeout waiting for followers link on @{handle}'s page.")
                 context.close()
