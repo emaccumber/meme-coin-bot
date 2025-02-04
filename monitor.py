@@ -117,9 +117,17 @@ def process_handle(handle):
 
             profile_url = f"https://x.com/{handle}"
             page.goto(profile_url, timeout=60000)
-            time.sleep(5)  # wait for page to load
 
-            # scrap tweets
+            # Wait for the page to load specific elements instead of using time.sleep
+            try:
+                page.wait_for_selector("article", timeout=10000)  # wait for articles to load
+            except PlaywrightTimeoutError:
+                logging.error(f"Timeout waiting for articles on @{handle}'s page.")
+                context.close()
+                browser.close()
+                return
+
+            # scrape tweets
             tweets_data = []
             articles = page.query_selector_all("article")
             for article in articles:
@@ -150,7 +158,14 @@ def process_handle(handle):
 
             # scrape follower count
             page.goto(profile_url, timeout=60000)
-            time.sleep(5)
+            try:
+                page.wait_for_selector("a:has-text('Followers')", timeout=10000)  # wait for followers link to load
+            except PlaywrightTimeoutError:
+                logging.error(f"Timeout waiting for followers link on @{handle}'s page.")
+                context.close()
+                browser.close()
+                return
+
             follower_elem = page.query_selector("a:has-text('Followers')")
             if follower_elem:
                 follower_count = follower_elem.inner_text().strip()
