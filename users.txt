@@ -5,6 +5,7 @@ Cristiano
 ishowspeedsui
 Justinbieber
 Rihanna
+KaiCenat
 katyperry
 realDonaldTrump
 taylorswift13
@@ -55,7 +56,6 @@ TheEllenShow
 LadyGaga
 YouTube
 JakeGagain
-Ashcryptoreal
 1shib_
 VitalikButerin
 saylor
@@ -141,7 +141,6 @@ YouTubeMusic
 WhatsApp
 Uber
 Airbnb
-PlayStation
 Xbox
 NintendoAmerica
 FortniteGame
@@ -175,8 +174,6 @@ Arsenal
 SpursOfficial
 acmilan
 Inter
-FortuneMagazine
-Forbes
 RollingStone
 Marvel
 DCComics
