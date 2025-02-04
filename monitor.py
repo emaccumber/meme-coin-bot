@@ -10,7 +10,6 @@ from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeo
 
 load_dotenv()
 
-# Telegram config from env vars
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
@@ -20,10 +19,10 @@ CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "0"))
 USERS_FILE = os.getenv("USERS_FILE", "users.txt")
 NUM_THREADS = int(os.getenv("NUM_THREADS", "5"))
 
-# db (for deduplication); should be mounted externally for persistence
+# DB (for deduplication); should be mounted externally for persistence
 DB_FILENAME = os.getenv("DB_FILENAME", "alerted_posts.db")
 
-# only consider tweets within specified days (so we're not inundated when first running bot)
+# Only consider tweets within specified days (so we're not inundated when first running the bot)
 TWEET_TIME_THRESHOLD = timedelta(days=7)
 
 CRYPTO_KEYWORDS = [
@@ -31,7 +30,7 @@ CRYPTO_KEYWORDS = [
     "safemoon", "$", "moonshot"
 ]
 
-# --- db functs ---
+# --- Database functions ---
 def init_db():
     conn = sqlite3.connect(DB_FILENAME)
     cursor = conn.cursor()
@@ -68,7 +67,7 @@ def add_alerted(handle, link):
     finally:
         conn.close()
 
-# --- telegram alert functs ---
+# --- Telegram alert functions ---
 def send_telegram_alert(message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         logging.error("Telegram bot token or chat ID not set in .env")
@@ -88,7 +87,7 @@ def send_telegram_alert(message):
     except Exception as e:
         logging.error(f"Exception sending Telegram alert: {e}")
 
-# --- users file management ---
+# --- Users file management ---
 def load_handles(filename):
     handles = []
     try:
@@ -101,11 +100,13 @@ def load_handles(filename):
         logging.error(f"Error reading users file '{filename}': {e}")
     return handles
 
-# --- scraping functs ---
+# --- Scraping functions ---
 def process_handle(handle):
     """
-    process single handle -> launch playwright
-     -> scrape tweets/followers -> send message
+    Process a single handle:
+      - Launch Playwright
+      - Scrape tweets and follower count using locator-based functions
+      - Send a Telegram alert for tweets containing crypto keywords (if not already alerted)
     """
     try:
         logging.info(f"Processing account: @{handle}")
@@ -118,35 +119,39 @@ def process_handle(handle):
             profile_url = f"https://x.com/{handle}"
             page.goto(profile_url, timeout=60000)
 
-            # Wait for the page to load specific elements instead of using time.sleep
+            articles_locator = page.locator("article")
             try:
-                page.wait_for_selector("article", timeout=10000)  # wait for articles to load
+                articles_locator.first.wait_for(timeout=10000)
             except PlaywrightTimeoutError:
                 logging.error(f"Timeout waiting for articles on @{handle}'s page.")
                 context.close()
                 browser.close()
                 return
 
-            # scrape tweets
+            # Scrape tweets
             tweets_data = []
-            articles = page.query_selector_all("article")
-            for article in articles:
+            articles_count = articles_locator.count()
+            for i in range(articles_count):
+                article = articles_locator.nth(i)
                 try:
-                    time_elem = article.query_selector("time")
-                    if time_elem:
-                        tweet_time_str = time_elem.get_attribute("datetime")
+                    time_locator = article.locator("time")
+                    tweet_time = None
+                    if time_locator.count() > 0:
+                        tweet_time_str = time_locator.first.get_attribute("datetime")
                         tweet_time = datetime.fromisoformat(tweet_time_str.replace("Z", "+00:00"))
-                    else:
-                        tweet_time = None
-
+                    
                     if tweet_time is None or (datetime.now(tweet_time.tzinfo) - tweet_time) > TWEET_TIME_THRESHOLD:
                         continue
 
                     tweet_text = article.inner_text()
-                    link_elem = article.query_selector("a[href*='/status/']")
-                    tweet_link = link_elem.get_attribute("href") if link_elem else profile_url
-                    if tweet_link.startswith("/"):
-                        tweet_link = "https://x.com" + tweet_link
+
+                    link_locator = article.locator("a[href*='/status/']")
+                    if link_locator.count() > 0:
+                        tweet_link = link_locator.first.get_attribute("href")
+                        if tweet_link.startswith("/"):
+                            tweet_link = "https://x.com" + tweet_link
+                    else:
+                        tweet_link = profile_url
 
                     tweets_data.append({
                         "time": tweet_time,
@@ -156,26 +161,22 @@ def process_handle(handle):
                 except Exception as e:
                     logging.error(f"Error extracting tweet data for @{handle}: {e}")
 
-            # scrape follower count
             page.goto(profile_url, timeout=60000)
+            followers_locator = page.locator("a", has_text="Followers")
             try:
-                page.wait_for_selector("a:has-text('Followers')", timeout=10000)  # wait for followers link to load
+                followers_locator.first.wait_for(timeout=10000)
             except PlaywrightTimeoutError:
                 logging.error(f"Timeout waiting for followers link on @{handle}'s page.")
                 context.close()
                 browser.close()
                 return
 
-            follower_elem = page.query_selector("a:has-text('Followers')")
-            if follower_elem:
-                follower_count = follower_elem.inner_text().strip()
-            else:
-                follower_count = "N/A"
+            follower_count = (followers_locator.first.inner_text().strip()
+                              if followers_locator.count() > 0 else "N/A")
 
             context.close()
             browser.close()
 
-            # process tweets; check against db and send alert if tweet is novel
             for tweet in tweets_data:
                 if already_alerted(handle, tweet["link"]):
                     logging.info(f"Skipping already alerted tweet for @{handle}: {tweet['link']}")
@@ -191,7 +192,6 @@ def process_handle(handle):
                     add_alerted(handle, tweet["link"])
     except Exception as e:
         logging.error(f"Error processing @{handle}: {e}")
-
 
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
